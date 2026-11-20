@@ -3,86 +3,155 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TD1 - Exo 1 : Géolocalisation</title>
+    <title>TD1 - Exo 2 : Leaflet & Géolocalisation</title>
+    
+    <!-- Feuille de style CSS de Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
     <style>
-        body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; line-height: 1.5; }
-        .box { border: 1px solid #ccc; border-radius: 8px; padding: 15px; margin-bottom: 20px; background: #f9f9f9; }
-        h2 { margin-top: 0; font-size: 1.2rem; color: #0066cc; }
-        .error { color: red; font-weight: bold; }
+        body { font-family: sans-serif; margin: 0; padding: 15px; }
+        #info-panel { background: #f0f4f8; padding: 10px 15px; border-radius: 8px; margin: 10px 0; border-left: 4px solid #0066cc; }
+        #map { height: 75vh; width: 100%; border-radius: 8px; border: 1px solid #ccc; }
     </style>
 </head>
 <body>
+
     <a href="../../index.html">← Retour au menu</a>
-    <h1>Exercice 1 : Géolocalisation</h1>
+    <h1>Exercice 2 : Carte Leaflet</h1>
 
-    <div class="box">
-        <h2>1. getCurrentPosition() (Position unique)</h2>
-        <div id="current-result">En attente de localisation...</div>
+    <div id="info-panel">
+        <strong>Distance jusqu'à Marseille :</strong> <span id="distance-marseille">Calcul en cours...</span>
     </div>
 
-    <div class="box">
-        <h2>2. watchPosition() (Suivi en continu)</h2>
-        <div id="watch-result">En attente de déplacement...</div>
-    </div>
+    <div id="map"></div>
+
+    <!-- Bibliothèque JavaScript Leaflet -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        // Fonction utilitaire pour formater proprement les données d'un objet GeolocationPosition
-        function formaterPosition(position) {
-            const c = position.coords;
-            // Conversion du timestamp (en millisecondes) en date lisible
-            const dateStr = new Date(position.timestamp).toLocaleString('fr-FR');
+        // Coordonnées de référence
+        const coordsNice = [43.7009, 7.2683];
+        const coordsMarseille = [43.2965, 5.3698];
 
-            return `
-                <ul>
-                    <li><strong>Latitude :</strong> ${c.latitude}</li>
-                    <li><strong>Longitude :</strong> ${c.longitude}</li>
-                    <li><strong>Altitude :</strong> ${c.altitude !== null ? c.altitude + ' m' : 'Non disponible'}</li>
-                    <li><strong>Précision :</strong> ${c.accuracy} mètres</li>
-                    <li><strong>Vitesse :</strong> ${c.speed !== null ? c.speed + ' m/s' : 'Non disponible (immobile)'}</li>
-                    <li><strong>Date (timestamp) :</strong> ${dateStr}</li>
-                </ul>
-            `;
-        }
+        // 1. Fonds de carte (OpenStreetMap + Stadia/Stamen avec le token du TD)
+        const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        });
 
-        // Fonction de gestion des erreurs (ex: refus de permission ou GPS désactivé)
-        function gererErreur(err) {
-            return `<p class="error">Erreur (${err.code}) : ${err.message}</p>`;
-        }
+        const stadiaToken = 'eed6a6b4-d171-43e4-8215-e5f8490b4245';
+        const stadiaWatercolor = L.tileLayer(`https://tiles.stadiamaps.com/tiles/stamen_watercolor/{z}/{x}/{y}.jpg?api_key=${stadiaToken}`, {
+            maxZoom: 16,
+            attribution: '© Stadia Maps, © Stamen Design, © OpenStreetMap'
+        });
 
-        // Options pour forcer la meilleure précision possible (utilise la puce GPS sur mobile)
-       const options = {
-            enableHighAccuracy: true,
-            timeout: 30000,      // On laisse 30 secondes au GPS/Wi-Fi pour répondre
-            maximumAge: 10000    // Accepte une position déjà calculée il y a moins de 10s
-        };
+        const map = L.map('map', {
+            center: coordsNice,
+            zoom: 12,
+            layers: [osmLayer]
+        });
 
-        // Vérification que le navigateur supporte la géolocalisation
+        L.control.layers({
+            "OpenStreetMap": osmLayer,
+            "Stamen Watercolor": stadiaWatercolor
+        }).addTo(map);
+
+        // 2. Marqueur sur Nice centre-ville
+        L.marker(coordsNice).addTo(map)
+            .bindPopup("<b>Nice Centre-Ville</b>");
+
+        // 3. Marqueur Marseille + Segment Marseille <-> Nice
+        L.marker(coordsMarseille).addTo(map)
+            .bindPopup("<b>Marseille</b><br>Vieux-Port");
+
+        L.polyline([coordsMarseille, coordsNice], {
+            color: 'blue',
+            weight: 3,
+            dashArray: '8, 8'
+        }).addTo(map).bindPopup("Segment Marseille ↔ Nice");
+
+        // 4. Triangle des Bermudes en rouge
+        const triangleBermudes = [
+            [25.7617, -80.1918],
+            [32.3078, -64.7505],
+            [18.4655, -66.1057]
+        ];
+        L.polygon(triangleBermudes, {
+            color: 'red',
+            fillColor: '#f03',
+            fillOpacity: 0.3
+        }).addTo(map).bindPopup("<b>Triangle des Bermudes</b>");
+
+        // 5. Données GeoJSON externes (Communes du 06 via geo.api.gouv.fr)
+        fetch('https://geo.api.gouv.fr/departements/06/communes?fields=nom,centre&format=geojson&geometry=centre')
+            .then(response => response.json())
+            .then(geojsonData => {
+                L.geoJSON(geojsonData, {
+                    pointToLayer: (feature, latlng) => {
+                        return L.circleMarker(latlng, {
+                            radius: 5,
+                            fillColor: "#800080",
+                            color: "#fff",
+                            weight: 1,
+                            fillOpacity: 0.8
+                        });
+                    },
+                    onEachFeature: (feature, layer) => {
+                        layer.bindPopup(`Commune (06) : <b>${feature.properties.nom}</b>`);
+                    }
+                }).addTo(map);
+            })
+            .catch(err => console.error("Erreur GeoJSON :", err));
+
+        // 6. Position GPS + Cercle de précision + Distance Marseille + Itinéraire OSRM
         if ("geolocation" in navigator) {
-            
-            // 1. Appel ponctuel : getCurrentPosition
             navigator.geolocation.getCurrentPosition(
                 (pos) => {
-                    document.getElementById('current-result').innerHTML = formaterPosition(pos);
+                    const lat = pos.coords.latitude;
+                    const lon = pos.coords.longitude;
+                    const precision = pos.coords.accuracy;
+                    const maPosition = [lat, lon];
+
+                    // Centrer la carte sur ta position
+                    map.setView(maPosition, 13);
+
+                    // Marqueur et cercle de précision
+                    L.marker(maPosition).addTo(map)
+                        .bindPopup(`<b>Ma position</b><br>Précision : ±${Math.round(precision)} m`)
+                        .openPopup();
+
+                    L.circle(maPosition, {
+                        radius: precision,
+                        color: '#28a745',
+                        fillColor: '#28a745',
+                        fillOpacity: 0.2
+                    }).addTo(map);
+
+                    // Calcul de distance à vol d'oiseau jusqu'à Marseille (en km)
+                    const pointMoi = L.latLng(lat, lon);
+                    const pointMarseille = L.latLng(coordsMarseille[0], coordsMarseille[1]);
+                    const distanceKm = (pointMoi.distanceTo(pointMarseille) / 1000).toFixed(2);
+                    document.getElementById('distance-marseille').textContent = `${distanceKm} km (à vol d'oiseau)`;
+
+                    // Itinéraire routier OSRM (attention : OSRM attend [longitude, latitude])
+                    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${lon},${lat};${coordsNice[1]},${coordsNice[0]}?overview=full&geometries=geojson`;
+                    
+                    fetch(osrmUrl)
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.routes && data.routes.length > 0) {
+                                L.geoJSON(data.routes[0].geometry, {
+                                    style: { color: '#ff6600', weight: 5 }
+                                }).addTo(map).bindPopup("Itinéraire routier OSRM vers Nice Centre");
+                            }
+                        })
+                        .catch(err => console.error("Erreur OSRM :", err));
                 },
                 (err) => {
-                    document.getElementById('current-result').innerHTML = gererErreur(err);
+                    document.getElementById('distance-marseille').textContent = `Erreur GPS (${err.message})`;
                 },
-                options
+                { enableHighAccuracy: true, timeout: 30000, maximumAge: 10000 }
             );
-
-            // 2. Appel continu : watchPosition
-            navigator.geolocation.watchPosition(
-                (pos) => {
-                    document.getElementById('watch-result').innerHTML = formaterPosition(pos);
-                },
-                (err) => {
-                    document.getElementById('watch-result').innerHTML = gererErreur(err);
-                },
-                options
-            );
-
-        } else {
-            document.body.innerHTML += "<p class='error'>La géolocalisation n'est pas supportée par ce navigateur.</p>";
         }
     </script>
 </body>
